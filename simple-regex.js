@@ -11,6 +11,8 @@ module.exports = (function() {
         this._currentIndex = 0;
         this._lastIndex = 0;
 
+        this._modifier = null;
+
         this._lastMatch = null;
         this.matches = {};
 
@@ -65,34 +67,127 @@ module.exports = (function() {
         if (match === -1) {
             this.error = true;
         } else {
-            this._lastMatch = this._targetString.substr(this._currentIndex, match);
-
-            this._lastIndex = this._currentIndex;
-            this._currentIndex += match;
+            this._updateIndex(this._currentIndex + match);
         }
 
         return this;
     };
 
     /**
-     * Match pattern or skip if there's no match
+     * Register a modifier that matches charaters or skip if there's no match
      *
-     * @param {String} pattern
      * @return The "this" object
      */
-    SimpleRegex.prototype.maybe = function(pattern) {
-        var match = _matchTargetWithPattern(this._targetString, pattern, this._currentIndex);
+    SimpleRegex.prototype.maybe = function() {
+        var self = this;
 
-        if (match === -1) {
-            this._lastMatch = '';
-        } else {
-            this._lastMatch = this._targetString.substr(this._currentIndex, match);
+        this._modifier = function(matchFunction) {
+            var targetIndex = self._currentIndex;
 
-            this._lastIndex = this._currentIndex;
-            this._currentIndex += match;
-        }
+            if (matchFunction(self._targetString[targetIndex])) {
+                self._updateIndex(self._currentIndex + 1);
+            } else {
+                self._lastMatch = '';
+            }
+        };
 
         return this;
+    };
+
+    SimpleRegex.prototype.one = function() {
+        var self = this;
+
+        this._modifier = function(matchFunction) {
+            var targetIndex = self._currentIndex;
+
+            if (matchFunction(self._targetString[targetIndex])) {
+                self._updateIndex(self._currentIndex + 1);
+            } else {
+                self.error = true;
+            }
+        };
+
+        return this;
+    };
+
+    /**
+     * Register a modifier that matches at least one or more than one characters
+     *
+     * @return The "this" object
+     */
+    SimpleRegex.prototype.oneOrMany = function() {
+        var self = this;
+
+        this._modifier = function(matchFunction) {
+            var targetIndex = self._currentIndex;
+
+            while (targetIndex < self._targetStringLength) {
+                var char = self._targetString[targetIndex];
+
+                if (matchFunction(char)) {
+                    targetIndex++;
+                } else {
+                    if (targetIndex === self._currentIndex) {
+                        // Faied to match the first char but this method requires matching at least
+                        // one, mark the error flag
+                        this.error = true;
+                    }
+                    break;
+                }
+            }
+
+            this._updateIndex(targetIndex);
+        };
+
+        return this;
+    };
+
+    SimpleRegex.prototype.number = function() {
+        if (this._modifier) {
+            this._modifier(function(char) {
+                return ('0' <= char) && (char <= '9');
+            });
+
+            // Reset the modifier to null after it's used
+            this._modifier = null;
+
+            return this;
+        } else {
+            // No modifier specified, use "one" as default modifier (match exactly one)
+            return this.one().number();
+        }
+    };
+
+    SimpleRegex.prototype.letter = function() {
+        if (this._modifier) {
+            this._modifier(function(char) {
+                return (('a' <= char) && (char <= 'z')) || (('A' <= char) && (char <= 'Z'));
+            });
+
+            // Reset the modifier to null after it's used
+            this._modifier = null;
+
+            return this;
+        } else {
+            // No modifier specified, use "one" as default modifier (match exactly one)
+            return this.one().letter();
+        }
+    };
+
+    SimpleRegex.prototype.is = function(matchingChar) {
+        if (this._modifier) {
+            this._modifier(function(char) {
+                return (matchingChar === char);
+            });
+
+            // Reset the modifier to null after it's used
+            this._modifier = null;
+
+            return this;
+        } else {
+            // No modifier specified, use "one" as default modifier (match exactly one)
+            return this.one().is(matchingChar);
+        }
     };
 
     /**
@@ -108,10 +203,7 @@ module.exports = (function() {
             var match = _matchTargetWithPattern(this._targetString, pattern, this._currentIndex);
 
             if (match !== -1) {
-                this._lastMatch = this._targetString.substr(this._currentIndex, match);
-
-                this._lastIndex = this._currentIndex;
-                this._currentIndex += match;
+                this._updateIndex(this._currentIndex + match);
 
                 return this;
             }
@@ -155,14 +247,9 @@ module.exports = (function() {
             }
 
             if (patternMatched) {
-                // targetStartingPos is the index where the matched "until" pattern starts
-                this._lastMatch = this._targetString.substr(
-                    this._currentIndex,
-                    targetStartingPos - this._currentIndex);
-
-                this._lastIndex = this._currentIndex;
+                // targetStartingPos is the index where the matched "until" pattern starts,
                 // advance to the starting index of the "until" pattern
-                this._currentIndex = targetStartingPos;
+                this._updateIndex(targetStartingPos);
                 return this;
             }
 
@@ -209,6 +296,14 @@ module.exports = (function() {
      */
     SimpleRegex.prototype.getReplacedString = function() {
         return this._replacedString;
+    };
+
+
+    SimpleRegex.prototype._updateIndex = function(nextIndex) {
+        this._lastIndex = this._currentIndex;
+        this._currentIndex = nextIndex;
+        this._lastMatch = this._targetString.substr(this._lastIndex,
+            this._currentIndex - this._lastIndex);
     };
 
     return SimpleRegex;
