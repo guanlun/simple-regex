@@ -2,8 +2,15 @@ module.exports = (function() {
     var SimpleRegex = function(targetString) {
         this._targetString = targetString;
         this._targetStringLength = targetString.length;
+        this._replacedString = targetString;
+
+        // Keep track of the length difference in the replaced string and the original target
+        // string, equals to (this._replacedString.length - this._targetString.length)
+        this._replaceLengthDiff = 0;
 
         this._currentIndex = 0;
+        this._lastIndex = 0;
+
         this._lastMatch = null;
         this.matches = {};
 
@@ -60,6 +67,7 @@ module.exports = (function() {
         } else {
             this._lastMatch = this._targetString.substr(this._currentIndex, match);
 
+            this._lastIndex = this._currentIndex;
             this._currentIndex += match;
         }
 
@@ -79,8 +87,11 @@ module.exports = (function() {
             this._lastMatch = '';
         } else {
             this._lastMatch = this._targetString.substr(this._currentIndex, match);
+
+            this._lastIndex = this._currentIndex;
             this._currentIndex += match;
         }
+
         return this;
     };
 
@@ -98,6 +109,8 @@ module.exports = (function() {
 
             if (match !== -1) {
                 this._lastMatch = this._targetString.substr(this._currentIndex, match);
+
+                this._lastIndex = this._currentIndex;
                 this._currentIndex += match;
 
                 return this;
@@ -147,6 +160,7 @@ module.exports = (function() {
                     this._currentIndex,
                     targetStartingPos - this._currentIndex);
 
+                this._lastIndex = this._currentIndex;
                 // advance to the starting index of the "until" pattern
                 this._currentIndex = targetStartingPos;
                 return this;
@@ -159,7 +173,7 @@ module.exports = (function() {
     };
 
     /**
-     * Bind a variable name to the last matched pattern
+     * Bind a variable name to the last matched segment
      *
      * @param varName Name of the key to be added to the "matches" object
      * @return The "this" object
@@ -167,6 +181,34 @@ module.exports = (function() {
     SimpleRegex.prototype.bindVar = function(key) {
         this.matches[key] = this._lastMatch;
         return this;
+    };
+
+    /**
+     * Replace the last matched segment with the provided value
+     *
+     * @param {String} value The new string to replace the matched segment
+     * @return The "this" object
+     */
+    SimpleRegex.prototype.replaceWith = function(value) {
+        var startIndex = this._lastIndex + this._replaceLengthDiff,
+            endIndex = this._currentIndex + this._replaceLengthDiff;
+
+        this._replacedString = this._replacedString.substr(0, startIndex)
+            + value + this._replacedString.substr(endIndex, this._replacedString.length - 1);
+
+        // Update diff value by adding the new length difference
+        this._replaceLengthDiff += value.length - (this._currentIndex - this._lastIndex);
+
+        return this;
+    };
+
+    /**
+     * Getter for the replaced string
+     *
+     * @return _replacedString
+     */
+    SimpleRegex.prototype.getReplacedString = function() {
+        return this._replacedString;
     };
 
     return SimpleRegex;
